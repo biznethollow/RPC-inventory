@@ -1,17 +1,15 @@
 <?php
-
-// ==================================================
-// FUNCTION XML-RPC CLIENT
-// ==================================================
 function rpc_call($method, $params = [])
 {
-    // Membuat XML-RPC request
+    $url = 'https://rpc-inventory.vercel.app/api';
+
     $xml = '<?xml version="1.0"?>';
     $xml .= '<methodCall>';
     $xml .= '<methodName>' . htmlspecialchars($method) . '</methodName>';
     $xml .= '<params>';
 
     foreach ($params as $param) {
+
         $xml .= '<param>';
         $xml .= '<value>';
 
@@ -30,40 +28,56 @@ function rpc_call($method, $params = [])
     $xml .= '</params>';
     $xml .= '</methodCall>';
 
-    // ==================================================
-    // MENGIRIM REQUEST KE PYTHON
-    // ==================================================
-    $context = stream_context_create([
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Content-Type: text/xml\r\n" .
-                         "Content-Length: " . strlen($xml) . "\r\n",
-            'content' => $xml,
-            'timeout' => 10
-        ]
+    $ch = curl_init($url);
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $xml,
+        CURLOPT_RETURNTRANSFER => true,
+
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: text/xml',
+            'Content-Length: ' . strlen($xml)
+        ],
+
+        CURLOPT_TIMEOUT => 10,
+
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false
     ]);
 
-    $response = @file_get_contents(
-        'http://localhost:8000',
-        false,
-        $context
+    $response = curl_exec($ch);
+
+    if ($response === false) {
+
+        $error = curl_error($ch);
+
+        curl_close($ch);
+
+        return [
+            'error' => true,
+            'message' => 'Tidak dapat terhubung ke server RPC: ' . $error
+        ];
+    }
+
+    $httpCode = curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
     );
 
-    // Jika server Python tidak dapat dihubungi
-    if ($response === false) {
+    curl_close($ch);
+
+    if ($httpCode < 200 || $httpCode >= 300) {
+
         return [
-            'error'   => true,
-            'message' => 'Tidak dapat terhubung ke server Python'
+            'error' => true,
+            'message' => 'Server RPC mengembalikan HTTP ' . $httpCode
         ];
     }
 
     return parse_xmlrpc_response($response);
 }
 
-
-// ==================================================
-// PARSE XML-RPC RESPONSE
-// ==================================================
 function parse_xmlrpc_response($xml)
 {
     $simpleXml = simplexml_load_string($xml);
@@ -75,7 +89,6 @@ function parse_xmlrpc_response($xml)
         ];
     }
 
-    // Cek RPC Fault
     if (isset($simpleXml->fault)) {
         return [
             'error'   => true,
@@ -89,27 +102,20 @@ function parse_xmlrpc_response($xml)
 }
 
 
-// ==================================================
-// PARSE XML-RPC VALUE
-// ==================================================
 function parse_xmlrpc_value($value)
 {
-    // STRING
     if (isset($value->string)) {
         return (string) $value->string;
     }
 
-    // INTEGER
     if (isset($value->int)) {
         return (int) $value->int;
     }
 
-    // BOOLEAN
     if (isset($value->boolean)) {
         return ((int) $value->boolean) === 1;
     }
 
-    // ARRAY
     if (isset($value->array)) {
         $result = [];
 
@@ -120,7 +126,6 @@ function parse_xmlrpc_value($value)
         return $result;
     }
 
-    // STRUCT
     if (isset($value->struct)) {
         $result = [];
 
@@ -134,21 +139,12 @@ function parse_xmlrpc_value($value)
 
         return $result;
     }
-
     return null;
 }
 
-
-// ==================================================
-// VARIABLE PESAN
-// ==================================================
 $message = null;
 $message_type = 'success';
 
-
-// ==================================================
-// TAMBAH BARANG
-// ==================================================
 if (isset($_POST['add'])) {
 
     $name = trim($_POST['name']);
@@ -173,10 +169,6 @@ if (isset($_POST['add'])) {
     }
 }
 
-
-// ==================================================
-// AMBIL SEBAGIAN BARANG
-// ==================================================
 if (isset($_POST['take'])) {
 
     $name = trim($_POST['name']);
@@ -201,10 +193,6 @@ if (isset($_POST['take'])) {
     }
 }
 
-
-// ==================================================
-// HAPUS BARANG
-// ==================================================
 if (isset($_POST['delete'])) {
 
     $name = $_POST['delete'];
@@ -228,14 +216,8 @@ if (isset($_POST['delete'])) {
     }
 }
 
-
-// ==================================================
-// AMBIL SEMUA BARANG
-// ==================================================
 $items = rpc_call('get_items');
 
-
-// Jika terjadi error ketika mengambil barang
 if (
     is_array($items) &&
     isset($items['error']) &&
@@ -378,23 +360,14 @@ if (
             background: #f8d7da;
             color: #721c24;
         }
-
     </style>
-
 </head>
-
 <body>
-
 <div class="container">
 
     <h1>
         Inventory Barang XML-RPC
     </h1>
-
-
-    <!-- ========================================= -->
-    <!-- PESAN -->
-    <!-- ========================================= -->
 
     <?php if ($message !== null): ?>
 
@@ -409,11 +382,6 @@ if (
         </div>
 
     <?php endif; ?>
-
-
-    <!-- ========================================= -->
-    <!-- TAMBAH BARANG -->
-    <!-- ========================================= -->
 
     <h2>
         Tambah Barang
@@ -449,11 +417,6 @@ if (
         </div>
 
     </form>
-
-
-    <!-- ========================================= -->
-    <!-- DAFTAR BARANG -->
-    <!-- ========================================= -->
 
     <h2>
         Daftar Barang
@@ -493,10 +456,6 @@ if (
 
                     <td>
 
-                        <!-- ================================= -->
-                        <!-- FORM AMBIL SEBAGIAN -->
-                        <!-- ================================= -->
-
                         <form
                             method="POST"
                             class="action-form"
@@ -529,11 +488,6 @@ if (
 
 
                         <br>
-
-
-                        <!-- ================================= -->
-                        <!-- FORM HAPUS -->
-                        <!-- ================================= -->
 
                         <form method="POST">
 
