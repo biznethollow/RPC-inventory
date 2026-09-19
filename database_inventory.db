@@ -1,0 +1,158 @@
+
+show full tables;
+create database inventory;
+use inventory;
+create table barang (
+	id int auto_increment primary key,
+    nama_barang varchar(255) not null,
+    jumlah int not null
+);
+create table user (
+	id int auto_increment primary key,
+    nama_user varchar(255) not null unique,
+    role enum('admin', 'biasa')
+);
+create table diambil (
+	id_ambil int not null auto_increment primary key,
+	id_user int not null,
+	id_barang int not null,
+    jumlah int not null,
+    foreign key (id_barang) references barang (id),
+    foreign key (id_user) references user (id)
+);
+DELIMITER //
+
+CREATE PROCEDURE ambil_barang(
+    IN p_id_user INT,
+    IN p_id_barang INT,
+    IN p_jumlah INT
+)
+BEGIN
+    DECLARE v_stok INT;
+    DECLARE v_user INT;
+    DECLARE v_barang INT;
+
+    -- Jika terjadi error, batalkan seluruh transaksi
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SELECT 'Gagal mengambil barang' AS message;
+    END;
+
+    START TRANSACTION;
+
+    -- Validasi jumlah
+    IF p_jumlah <= 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Jumlah barang harus lebih dari 0';
+    END IF;
+
+    -- Cek user
+    SELECT COUNT(*)
+    INTO v_user
+    FROM user
+    WHERE id = p_id_user;
+
+    IF v_user = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'User tidak ditemukan';
+    END IF;
+
+    -- Ambil stok barang
+    SELECT jumlah
+    INTO v_stok
+    FROM barang
+    WHERE id = p_id_barang
+    FOR UPDATE;
+
+    -- Cek barang
+    IF v_stok IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Barang tidak ditemukan';
+    END IF;
+
+    -- Cek stok
+    IF v_stok < p_jumlah THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Stok barang tidak mencukupi';
+    END IF;
+
+    -- Kurangi stok
+    UPDATE barang
+    SET jumlah = jumlah - p_jumlah
+    WHERE id = p_id_barang;
+
+    -- Catat pengambilan
+    INSERT INTO diambil (
+        id_user,
+        id_barang,
+        jumlah
+    )
+    VALUES (
+        p_id_user,
+        p_id_barang,
+        p_jumlah
+    );
+
+    COMMIT;
+
+    SELECT 'Barang berhasil diambil' AS message;
+
+END //
+
+DELIMITER ;
+
+DELIMITER //
+
+CREATE PROCEDURE batalkan_pengambilan(
+    IN p_id_ambil INT
+)
+BEGIN
+    DECLARE v_id_barang INT;
+    DECLARE v_jumlah INT;
+    DECLARE v_ambil INT DEFAULT 0;
+
+    -- Jika terjadi error, batalkan seluruh transaksi
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    -- Cari data pengambilan
+    SELECT COUNT(*)
+    INTO v_ambil
+    FROM diambil
+    WHERE id_ambil = p_id_ambil;
+
+    -- Jika data tidak ditemukan
+    IF v_ambil = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Data pengambilan tidak ditemukan';
+    END IF;
+
+    -- Ambil informasi barang dan jumlah
+    SELECT id_barang, jumlah
+    INTO v_id_barang, v_jumlah
+    FROM diambil
+    WHERE id_ambil = p_id_ambil
+    FOR UPDATE;
+
+    -- Kembalikan barang ke stok
+    UPDATE barang
+    SET jumlah = jumlah + v_jumlah
+    WHERE id = v_id_barang;
+
+    -- Hapus catatan pengambilan
+    DELETE FROM diambil
+    WHERE id_ambil = p_id_ambil;
+
+    COMMIT;
+
+    SELECT 'Pengambilan barang berhasil dibatalkan' AS message;
+
+END //
+
+DELIMITER ;
