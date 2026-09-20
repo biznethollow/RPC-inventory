@@ -51,13 +51,13 @@ def tambah_barang():
 @app.route("/api/hapus_barang", methods=["POST"])
 def hapus_barang():
     data = request.get_json()
-    id = data["id"]
+    id_barang = data["id_barang"]
     cursor = db.cursor()
     sql = """
         DELETE FROM barang 
         where id = %s 
     """
-    cursor.execute(sql, (id))
+    cursor.execute(sql, (id_barang))
     db.commit()
     cursor.close()
 
@@ -78,13 +78,13 @@ def tambah_user():
 @app.route("/api/hapus_user", methods=["POST"])
 def hapus_user():
     data = request.get_json()
-    id = data["id"]
+    id_user = data["id_user"]
     cursor = db.cursor()
     sql = """
         DELETE FROM user 
         where id = %s
     """
-    cursor.execute(sql, (id))
+    cursor.execute(sql, (id_user))
     db.commit()
     cursor.close()
 
@@ -105,17 +105,17 @@ def ambil_barang():
 @app.route("/api/batal_ambil_barang", methods=["POST"])
 def batal_ambil_barang():
     data = request.get_json()
-    id = data["id"]
+    id_ambil = data["id_ambil"]
     cursor = db.cursor()
     sql = """
         CALL batalkan_pengambilan(%s)
     """
-    cursor.execute(sql, (id))
+    cursor.execute(sql, (id_ambil))
     db.commit()
     cursor.close()
 
 if __name__ == "__main__":
     app.run(
-        host="192.168.137.1",
+        host="127.0.0.1",
         port=5000
     )
